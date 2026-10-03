@@ -275,8 +275,8 @@ class Neo4jGraph(GraphStore):
                 ):
                     raise
         # fallback to allow implicit transactions
-        session_params.setdefault("database", self._database)
-        with self._driver.session(**session_params) as session:
+        session_kwargs = {"database": self._database, **session_params}
+        with self._driver.session(**session_kwargs) as session:
             result = session.run(Query(text=query, timeout=self.timeout), params)
             json_data = [r.data() for r in result]
             if self.sanitize:

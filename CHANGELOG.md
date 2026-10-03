@@ -2,6 +2,10 @@
 
 ## Next
 
+### Fixed
+
+- `Neo4jGraph.query` mutating `session_params` when falling back to an implicit transaction.
+
 ## 0.10.0
 
 ### Added
