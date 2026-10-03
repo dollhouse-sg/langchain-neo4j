@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_classic.chains.base import Chain
@@ -150,6 +151,8 @@ class GraphCypherQAChain(Chain):
 
         See https://docs.langchain.com/oss/python/security-policy for more information.
     """
+    read_only: bool = False
+    """Whether to execute the generated Cypher in a read-only transaction"""
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the chain."""
@@ -166,6 +169,14 @@ class GraphCypherQAChain(Chain):
                 "necessary precautions. "
                 "See https://docs.langchain.com/oss/python/security-policy for more "
                 "information."
+            )
+        if (
+            self.read_only
+            and "read_only" not in inspect.signature(self.graph.query).parameters
+        ):
+            raise ValueError(
+                "`read_only=True` requires a graph whose `query` method declares a "
+                "`read_only` parameter, such as `Neo4jGraph`."
             )
 
     @property
@@ -356,7 +367,9 @@ class GraphCypherQAChain(Chain):
         # Retrieve and limit the number of results
         # Generated Cypher be null if query corrector identifies invalid schema
         if generated_cypher:
-            context = self.graph.query(generated_cypher)[: self.top_k]
+            # Only pass read_only if set, as other graph stores may not accept it
+            query_kwargs: Dict[str, Any] = {"read_only": True} if self.read_only else {}
+            context = self.graph.query(generated_cypher, **query_kwargs)[: self.top_k]
         else:
             context = []
 

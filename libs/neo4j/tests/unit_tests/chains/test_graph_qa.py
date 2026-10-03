@@ -88,6 +88,13 @@ class FakeGraphStoreWithoutEnhancedSchema:
         pass
 
 
+class FakeReadOnlyGraphStore(FakeGraphStore):
+    def query(
+        self, query: str, params: dict = {}, *, read_only: bool = False
+    ) -> List[Dict[str, Any]]:
+        return []
+
+
 def test_graph_store() -> None:
     """Tests that FakeGraphStore satisfies the GraphStore protocol requirements."""
     graph = FakeGraphStore()
@@ -575,6 +582,46 @@ def test_allow_dangerous_requests_err() -> None:
     assert (
         "In order to use this chain, you must acknowledge that it can make "
         "dangerous requests by setting `allow_dangerous_requests` to `True`."
+    ) in str(exc_info.value)
+
+
+def test_read_only_disabled_by_default() -> None:
+    """Graph stores without a read_only parameter should still be supported."""
+    graph = FakeGraphStore()
+    chain = GraphCypherQAChain.from_llm(
+        llm=FakeLLM(), graph=graph, allow_dangerous_requests=True, return_direct=True
+    )
+    assert chain.read_only is False
+    with patch.object(graph, "query", wraps=graph.query) as mock_query:
+        chain.invoke({"query": "Test question"})
+    mock_query.assert_called_once_with("foo")
+
+
+def test_read_only() -> None:
+    graph = FakeReadOnlyGraphStore()
+    chain = GraphCypherQAChain.from_llm(
+        llm=FakeLLM(),
+        graph=graph,
+        allow_dangerous_requests=True,
+        return_direct=True,
+        read_only=True,
+    )
+    with patch.object(graph, "query", wraps=graph.query) as mock_query:
+        chain.invoke({"query": "Test question"})
+    mock_query.assert_called_once_with("foo", read_only=True)
+
+
+def test_read_only_unsupported_graph_err() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        GraphCypherQAChain.from_llm(
+            llm=FakeLLM(),
+            graph=FakeGraphStore(),
+            allow_dangerous_requests=True,
+            read_only=True,
+        )
+    assert (
+        "`read_only=True` requires a graph whose `query` method declares a "
+        "`read_only` parameter"
     ) in str(exc_info.value)
 
 

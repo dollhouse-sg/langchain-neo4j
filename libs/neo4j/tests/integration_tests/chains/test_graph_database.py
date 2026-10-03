@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.language_models import BaseLanguageModel
+from neo4j.exceptions import ClientError
 
 from langchain_neo4j.chains.graph_qa.cypher import GraphCypherQAChain
 from langchain_neo4j.graphs.neo4j_graph import Neo4jGraph
@@ -40,6 +41,26 @@ def test_cypher_generating_run(neo4j_credentials: Neo4jCredentials) -> None:
     output = chain.run("Who starred in Pulp Fiction?")
     expected_output = "Bruce Willis"
     assert output == expected_output
+
+
+@pytest.mark.usefixtures("clear_neo4j_database")
+def test_cypher_read_only(neo4j_credentials: Neo4jCredentials) -> None:
+    """Test that generated write queries are rejected with read_only."""
+    graph = Neo4jGraph(**neo4j_credentials)
+    graph.query("CREATE (:Movie {title: 'Pulp Fiction'})")
+    llm = FakeLLM(
+        queries={"query": "MATCH (n) DETACH DELETE n"}, sequential_responses=True
+    )
+    chain = GraphCypherQAChain.from_llm(
+        llm=llm,
+        graph=graph,
+        allow_dangerous_requests=True,
+        read_only=True,
+    )
+    with pytest.raises(ClientError) as exc_info:
+        chain.invoke({"query": "Delete everything"})
+    assert exc_info.value.code == "Neo.ClientError.Statement.AccessMode"
+    assert graph.query("MATCH (n) RETURN count(n) AS c") == [{"c": 1}]
 
 
 @pytest.mark.usefixtures("clear_neo4j_database")

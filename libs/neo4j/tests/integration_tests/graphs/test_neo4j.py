@@ -3,6 +3,7 @@ import urllib
 
 import pytest
 from langchain_core.documents import Document
+from neo4j.exceptions import ClientError
 from neo4j_graphrag.schema import NODE_PROPERTIES_QUERY, REL_PROPERTIES_QUERY, REL_QUERY
 
 from langchain_neo4j import Neo4jGraph
@@ -136,6 +137,28 @@ def test_neo4j_timeout(neo4j_credentials: Neo4jCredentials) -> None:
             e.code
             == "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration"
         )
+
+
+@pytest.mark.usefixtures("clear_neo4j_database")
+@pytest.mark.parametrize(
+    "session_params",
+    [
+        {},  # execute_query
+        {"database": "neo4j"},  # session fallback
+    ],
+)
+def test_neo4j_read_only(
+    neo4j_credentials: Neo4jCredentials, session_params: dict
+) -> None:
+    """Test that read_only queries can read but not write."""
+    graph = Neo4jGraph(**neo4j_credentials)
+    with pytest.raises(ClientError) as exc_info:
+        graph.query("CREATE (:Foo)", session_params=session_params, read_only=True)
+    assert exc_info.value.code == "Neo.ClientError.Statement.AccessMode"
+    output = graph.query(
+        "MATCH (n) RETURN count(n) AS c", session_params=session_params, read_only=True
+    )
+    assert output == [{"c": 0}]
 
 
 @pytest.mark.usefixtures("clear_neo4j_database")

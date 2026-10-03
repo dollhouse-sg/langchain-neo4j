@@ -2,6 +2,11 @@
 
 ## Next
 
+### Added
+
+- `read_only` parameter on `Neo4jGraph.query` to execute queries with `READ` access mode, so the server rejects writes.
+- `read_only` option on `GraphCypherQAChain` to execute generated Cypher with `read_only=True`.
+
 ### Fixed
 
 - `Neo4jGraph.query` mutating `session_params` when falling back to an implicit transaction.

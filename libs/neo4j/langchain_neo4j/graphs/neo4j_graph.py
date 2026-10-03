@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type
 
 import neo4j
 from langchain_core.utils import get_from_dict_or_env
-from neo4j import Auth, basic_auth, bearer_auth
+from neo4j import READ_ACCESS, Auth, RoutingControl, basic_auth, bearer_auth
 from neo4j_graphrag.schema import (
     BASE_ENTITY_LABEL,
     _value_sanitize,
@@ -222,6 +222,8 @@ class Neo4jGraph(GraphStore):
         query: str,
         params: dict = {},
         session_params: dict = {},
+        *,
+        read_only: bool = False,
     ) -> List[Dict[str, Any]]:
         """Query Neo4j database.
 
@@ -230,6 +232,7 @@ class Neo4jGraph(GraphStore):
             params: The parameters to pass to the query.
             session_params: Parameters to pass to the session used for executing the
                 query.
+            read_only: Whether to execute the query with `READ` access mode.
 
         Returns:
             The list of dictionaries containing the query results.
@@ -247,6 +250,7 @@ class Neo4jGraph(GraphStore):
                     Query(text=query, timeout=self.timeout),
                     database_=self._database,
                     parameters_=params,
+                    routing_=RoutingControl.READ if read_only else RoutingControl.WRITE,
                 )
                 json_data = [r.data() for r in data]
                 if self.sanitize:
@@ -276,6 +280,8 @@ class Neo4jGraph(GraphStore):
                     raise
         # fallback to allow implicit transactions
         session_kwargs = {"database": self._database, **session_params}
+        if read_only:
+            session_kwargs["default_access_mode"] = READ_ACCESS
         with self._driver.session(**session_kwargs) as session:
             result = session.run(Query(text=query, timeout=self.timeout), params)
             json_data = [r.data() for r in result]

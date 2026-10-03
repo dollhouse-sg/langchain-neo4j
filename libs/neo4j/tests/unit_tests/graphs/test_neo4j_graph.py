@@ -3,7 +3,7 @@ from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from neo4j import Record, bearer_auth
+from neo4j import READ_ACCESS, WRITE_ACCESS, Record, RoutingControl, bearer_auth
 from neo4j._work.summary import ResultSummary
 from neo4j.exceptions import ClientError, ConfigurationError, Neo4jError
 from neo4j_graphrag.schema import LIST_LIMIT
@@ -251,6 +251,44 @@ def test_query_fallback_execution(mock_neo4j_driver: MagicMock) -> None:
     assert called_query.timeout == graph.timeout
     assert called_args[1] == params
     assert json_data == [{"key1": "value1"}]
+
+
+@pytest.mark.parametrize(
+    "read_only, expected_routing",
+    [(False, RoutingControl.WRITE), (True, RoutingControl.READ)],
+)
+def test_query_read_only_routing(
+    mock_neo4j_driver: MagicMock, read_only: bool, expected_routing: RoutingControl
+) -> None:
+    """Test that read_only sets the routing control in query."""
+    graph = Neo4jGraph(
+        url="bolt://localhost:7687",
+        username="neo4j",
+        password="password",
+        refresh_schema=False,
+    )
+    mock_neo4j_driver.execute_query.return_value = ([], None, None)
+    graph.query("MATCH (n) RETURN n", read_only=read_only)
+    _, kwargs = mock_neo4j_driver.execute_query.call_args
+    assert kwargs["routing_"] == expected_routing
+
+
+def test_query_read_only_fallback_execution(mock_neo4j_driver: MagicMock) -> None:
+    """Test that read_only sets the access mode of the fallback session in query."""
+    graph = Neo4jGraph(
+        url="bolt://localhost:7687",
+        username="neo4j",
+        password="password",
+        database="test_db",
+        refresh_schema=False,
+    )
+    mock_neo4j_driver.session.return_value.__enter__.return_value.run.return_value = []
+    session_params = {"default_access_mode": WRITE_ACCESS}
+    graph.query("MATCH (n) RETURN n", session_params=session_params, read_only=True)
+    mock_neo4j_driver.session.assert_called_with(
+        database="test_db", default_access_mode=READ_ACCESS
+    )
+    assert session_params == {"default_access_mode": WRITE_ACCESS}
 
 
 def test_refresh_schema_handles_client_error(mock_neo4j_driver: MagicMock) -> None:
